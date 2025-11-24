@@ -25,6 +25,46 @@ export default function WebcamDetection() {
   // State lokal untuk memicu re-render UI (border warna) saat ada deteksi YOLO
   const [hasDetections, setHasDetections] = useState(false);
 
+  // --- FITUR BARU: WAKE LOCK (ANTI SLEEP) ---
+  const wakeLockRef = useRef(null);
+
+  const requestWakeLock = async () => {
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+        // console.log('Layar dikunci agar tetap menyala');
+      } catch (err) {
+        console.warn("Gagal mengaktifkan Wake Lock:", err);
+      }
+    }
+  };
+
+  const releaseWakeLock = async () => {
+    if (wakeLockRef.current) {
+      try {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+        // console.log('Wake Lock dilepas');
+      } catch (err) {
+        console.warn("Gagal melepas Wake Lock:", err);
+      }
+    }
+  };
+
+  // Effect: Aktifkan Wake Lock saat kamera menyala
+  useEffect(() => {
+    if (cameraOn) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    // Cleanup saat komponen di-unmount atau tab ditutup
+    return () => {
+      releaseWakeLock();
+    };
+  }, [cameraOn]);
+
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
@@ -81,8 +121,9 @@ export default function WebcamDetection() {
     return "border-gray-800";
   };
 
+  // --- PERBAIKAN CONTAINER MOBILE (100dvh) ---
   const containerClass = isMobile && cameraOn
-    ? "fixed inset-0 z-50 bg-black flex flex-col items-center justify-center" 
+    ? "fixed inset-0 z-50 bg-black flex flex-col items-center justify-center h-[100dvh]" // <-- Menggunakan h-[100dvh] agar pas di browser HP
     : `relative w-full max-w-4xl mx-auto bg-gray-900 rounded-3xl overflow-hidden shadow-2xl border-4 transition-all duration-300 ${getBorderClass()} aspect-[3/4] md:aspect-video`;
 
   const objectFitClass = isMobile ? "object-contain" : "object-cover";
@@ -91,7 +132,7 @@ export default function WebcamDetection() {
     <div className="w-full p-4 flex justify-center">
       <div className={containerClass}>
 
-        {/* --- HEADER MOBILE (PERBAIKAN: FPS TAMPIL DISINI) --- */}
+        {/* --- HEADER MOBILE (FPS TAMPIL DISINI) --- */}
         {isMobile && cameraOn && (
           <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-[60] bg-gradient-to-b from-black/80 to-transparent">
             <div className="flex flex-col gap-1">
