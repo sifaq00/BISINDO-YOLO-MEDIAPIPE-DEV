@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
-const DETECT_URL = `${API_BASE}/detect`;
+// ✅ UBAH dari HTTP ke WebSocket
+const WS_URL = API_BASE. replace("http", "ws") + "/ws/detect";
 
 // --- PENGATURAN KECEPATAN (LIMIT) ---
 const MIN_INTERVAL_MS = 0; 
@@ -9,26 +10,24 @@ const MIN_INTERVAL_MS = 0;
 export function useDetection(videoRef, cameraOn, onDetections, handPresence) {
   const [fps, setFps] = useState(0);
   
+  const wsRef = useRef(null); // ✅ Reference ke WebSocket
   const sendingRef = useRef(false);
   const lastSendTime = useRef(0); 
   const fpsCount = useRef(0);
   const fpsLastT = useRef(performance.now());
   const animationFrameRef = useRef(null);
 
-  // Kita simpan rasio resize di ref agar bisa dipakai saat data balik
+  // Simpan rasio resize untuk upscale bbox
   const resizeScaleRef = useRef(1); 
 
-  // Helper snapshot: OTOMATIS RESIZE KE 640px
-  const captureImage = () => {
+  // ✅ FUNGSI BARU: Convert canvas ke JPEG binary (bukan base64!)
+  const captureImageAsJpeg = () => {
     const v = videoRef.current;
     if (!v || !v.videoWidth) return null;
 
-    // Target lebar untuk dikirim ke API
     const targetWidth = 480; 
-    
-    // Hitung Rasio (Misal: 640 / 1280 = 0.5)
     const scale = targetWidth / v.videoWidth;
-    resizeScaleRef.current = scale; // Simpan rasionya!
+    resizeScaleRef.current = scale;
 
     const targetHeight = v.videoHeight * scale;
 
@@ -36,82 +35,140 @@ export function useDetection(videoRef, cameraOn, onDetections, handPresence) {
     cvs.width = targetWidth;
     cvs.height = targetHeight;
     
-    cvs.getContext("2d").drawImage(v, 0, 0, targetWidth, targetHeight);
+    cvs.getContext("2d"). drawImage(v, 0, 0, targetWidth, targetHeight);
     
-    return cvs.toDataURL("image/jpeg", 0.6); 
+    // ✅ Return sebagai Blob JPEG (bukan data URL string)
+    return new Promise((resolve) => {
+      cvs.toBlob(resolve, "image/jpeg", 0.8); // Quality 0.8 = good balance
+    });
   };
 
-  // Fungsi Kirim ke API
-  const sendDetect = async () => {
+  // ✅ FUNGSI BARU: Connect ke WebSocket
+  const connectWebSocket = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      return; // Sudah connect
+    }
+
+    try {
+      wsRef.current = new WebSocket(WS_URL);
+      wsRef.current.binaryType = "arraybuffer"; // Receive binary data
+      
+      wsRef.current.onopen = () => {
+        console.log("✅ WebSocket connected to backend");
+      };
+
+      wsRef.current.onmessage = (event) => {
+        try {
+          // Backend mengirim JSON dengan detections
+          const data = JSON.parse(event.data);
+          
+          if (data.detections) {
+            // Upscale coordinates ke ukuran asli video
+            const scale = resizeScaleRef.current;
+            const scaledDetections = data.detections.map(d => ({
+              ...d,
+              x1: d.x1 / scale,
+              y1: d. y1 / scale,
+              x2: d.x2 / scale,
+              y2: d.y2 / scale
+            }));
+
+            if (onDetections) onDetections(scaledDetections);
+
+            // Update FPS counter
+            fpsCount.current++;
+            const now = performance.now();
+            if (now - fpsLastT.current >= 1000) {
+              setFps(fpsCount.current);
+              fpsCount.current = 0;
+              fpsLastT.current = now;
+            }
+          }
+        } catch (e) {
+          console.error("WebSocket message parse error:", e);
+        }
+      };
+
+      wsRef.current.onerror = (error) => {
+        console.error("❌ WebSocket error:", error);
+      };
+
+      wsRef.current. onclose = () => {
+        console.log("❌ WebSocket disconnected");
+        wsRef.current = null;
+      };
+    } catch (e) {
+      console.error("Failed to connect WebSocket:", e);
+    }
+  };
+
+  // ✅ FUNGSI BARU: Kirim frame via WebSocket
+  const sendDetectViaWebSocket = async () => {
     const now = performance.now();
 
-    // --- STRATEGI BARU: GATEKEEPER ---
-    // 1. Jika kamera mati -> Stop
-    // 2. Jika sedang mengirim (sendingRef) -> Stop
-    // 3. Jika TIDAK ADA TANGAN (handPresence false) -> Stop (Hemat API)
-    if (!cameraOn || sendingRef.current || !handPresence) {
+    // Gatekeeper checks
+    if (! cameraOn || sendingRef.current || !handPresence) {
       return; 
     }
 
-    if (now - lastSendTime.current < MIN_INTERVAL_MS) {
+    if (now - lastSendTime. current < MIN_INTERVAL_MS) {
       return; 
+    }
+
+    // Pastikan WebSocket connected
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn("⚠️ WebSocket not connected, attempting reconnect...");
+      connectWebSocket();
+      return;
     }
     
-    const dataUrl = captureImage();
-    if (!dataUrl) return;
-
     sendingRef.current = true;
     lastSendTime.current = now;
 
     try {
-      const res = await fetch(DETECT_URL, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true",
-        },
-        body: JSON.stringify({ image: dataUrl }),
-      });
-      
-      if (res.ok) {
-        const rawDetections = await res.json();
-        
-        // --- LOGIKA PERBAIKAN BBOX (UPSCALE) ---
-        // Karena API mendeteksi di gambar kecil (640px),
-        // Kita harus kembalikan koordinatnya ke ukuran asli video (1280px).
-        // Caranya: Bagi koordinat dengan scale tadi. (x / 0.5 = 2x)
-        const scale = resizeScaleRef.current;
-        
-        const scaledDetections = rawDetections.map(d => ({
-          ...d,
-          x1: d.x1 / scale,
-          y1: d.y1 / scale,
-          x2: d.x2 / scale,
-          y2: d.y2 / scale
-        }));
-
-        if (onDetections) onDetections(scaledDetections); 
-
-        // Hitung FPS Server
-        fpsCount.current++;
-        if (now - fpsLastT.current >= 1000) {
-           setFps(fpsCount.current);
-           fpsCount.current = 0;
-           fpsLastT.current = now;
-        }
+      // ✅ Capture frame sebagai JPEG binary
+      const jpegBlob = await captureImageAsJpeg();
+      if (!jpegBlob) {
+        sendingRef.current = false;
+        return;
       }
+
+      // ✅ Kirim binary ke WebSocket (bukan base64!)
+      wsRef.current.send(jpegBlob);
+
     } catch (e) {
-      console.error("Detect Error:", e);
+      console.error("Send error:", e);
     } finally {
       sendingRef.current = false;
     }
   };
 
-  // Loop Animation Frame
+  // ✅ Connect WebSocket saat kamera nyala
+  useEffect(() => {
+    if (cameraOn) {
+      connectWebSocket();
+    } else {
+      // Disconnect saat kamera mati
+      if (wsRef. current) {
+        wsRef. current.close();
+        wsRef.current = null;
+      }
+      setFps(0);
+    }
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [cameraOn]);
+
+  // Loop untuk mengirim frame
   useEffect(() => {
     const loop = () => {
       if (cameraOn) {
-        sendDetect();
+        sendDetectViaWebSocket();
         animationFrameRef.current = requestAnimationFrame(loop);
       }
     };
@@ -126,7 +183,7 @@ export function useDetection(videoRef, cameraOn, onDetections, handPresence) {
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [cameraOn, handPresence]); // Tambahkan handPresence ke dependency
+  }, [cameraOn, handPresence]);
 
   return { fps };
 }
