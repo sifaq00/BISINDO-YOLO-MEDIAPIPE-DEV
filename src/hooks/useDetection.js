@@ -4,7 +4,7 @@ const API_BASE = import.meta.env.VITE_API_BASE;
 const DETECT_URL = `${API_BASE}/detect`;
 
 // --- PENGATURAN KECEPATAN (LIMIT) ---
-const MIN_INTERVAL_MS = 0; // Beri jeda 100ms agar lebih hemat resource
+const MIN_INTERVAL_MS = 0; 
 
 export function useDetection(videoRef, cameraOn, onDetections, handPresence) {
   const [fps, setFps] = useState(0);
@@ -24,7 +24,7 @@ export function useDetection(videoRef, cameraOn, onDetections, handPresence) {
     if (!v || !v.videoWidth) return null;
 
     // Target lebar untuk dikirim ke API
-    const targetWidth = 640; 
+    const targetWidth = 480; 
     
     // Hitung Rasio (Misal: 640 / 1280 = 0.5)
     const scale = targetWidth / v.videoWidth;
