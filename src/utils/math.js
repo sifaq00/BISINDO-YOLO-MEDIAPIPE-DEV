@@ -1,21 +1,18 @@
-// src/utils/math.js
-
 // --- KONFIGURASI TRACKING ---
 
 // Ambang batas tumpang tindih (0.3 artinya nempel 30% dianggap objek sama)
 export const MATCH_IOU = 0.3;        
 
-// Waktu hidup track jika objek hilang (DITURUNKAN dari 400 ke 200)
 // Agar deteksi "hantu" cepat hilang saat tangan bergerak cepat
-export const TRACK_TTL_MS = 1000;     
+export const TRACK_TTL_MS = 300;     
 
-// Kecepatan animasi kotak mengejar tangan (DITURUNKAN dari 8 ke 5)
+// Kecepatan animasi kotak mengejar tangan 
 // Agar pergerakan terlihat lebih halus (cinematic) dan tidak gemetar
-export const LERP_SPEED_PER_SEC = 5; 
+export const LERP_SPEED_PER_SEC = 10; 
 
 // Batas minimal akurasi (BARU)
-// Deteksi di bawah 60% dianggap sampah/noise dan dibuang
-const MIN_SCORE = 0.60; 
+// Deteksi di bawah 75% dianggap sampah/noise dan dibuang
+const MIN_SCORE = 0.75; 
 
 // --- HELPER FUNCTIONS ---
 
@@ -50,9 +47,9 @@ export function matchDetectionsToTracks(currentTracks, newDetections, nextIdRef)
   tracks.forEach(tr => tr._matched = false);
 
   // 2. Format & FILTER deteksi baru
-  //    Disini kita membuang deteksi yang score-nya jelek (< 0.60)
+  //    Disini membuang deteksi yang score-nya jelek (< 0.75)
   const detBoxes = newDetections
-    .filter(d => (d.score ?? 0) > MIN_SCORE) // <--- FILTER PENTING
+    .filter(d => (d.score ?? 0) > MIN_SCORE) 
     .map(d => ({
       x: d.x1, 
       y: d.y1, 

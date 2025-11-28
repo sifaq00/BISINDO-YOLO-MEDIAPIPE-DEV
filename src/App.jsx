@@ -1,8 +1,8 @@
 import { useState } from "react";
 import WebcamDetection from "./components/WebcamDetection";
 import ImageDetection from "./components/ImageDetection";
-// Menggunakan Lucide Icons agar seragam dengan komponen lain
-import { Video, Image as ImageIcon, ArrowLeft, Hand } from "lucide-react";
+import logoBisindo from "./assets/logo-bisindo.png";
+import { Video, Image as ImageIcon, ArrowLeft } from "lucide-react";
 
 function App() {
   const [detectionMode, setDetectionMode] = useState(null);
@@ -21,7 +21,7 @@ function App() {
   return (
     <div className="min-h-screen w-full bg-gray-900 text-white selection:bg-indigo-500 selection:text-white flex flex-col">
       
-      {/* --- BACKGROUND EFFECT (Opsional: Aksen Cahaya) --- */}
+      {/* --- BACKGROUND EFFECT --- */}
       <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[120px]" />
@@ -35,12 +35,15 @@ function App() {
           
           {/* Logo / Icon Header */}
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm shadow-xl">
-              <Hand size={40} className="text-blue-400" />
-            </div>
+            <img
+              src={logoBisindo}
+              alt="Logo BISINDO"
+              className="w-24 h-24 object-contain drop-shadow-lg"
+            />
           </div>
 
-          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-5xl font-extrabold tracking-tight">
+
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500">
               BISINDO
             </span>{" "}
@@ -132,7 +135,7 @@ function App() {
           )}
         </main>
 
-        {/* FOOTER (Opsional) */}
+        {/* FOOTER */}
         <footer className="mt-12 text-center text-gray-600 text-xs sm:text-sm">
           <p>&copy; 2025 BISINDO Detection System. Muhammad Asifaq.</p>
         </footer>

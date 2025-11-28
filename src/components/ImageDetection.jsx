@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-// Tambahkan icon Download
 import { Upload, Image as ImageIcon, Loader2, XCircle, Download } from "lucide-react";
 import labels from "../utils/labels.json";
 
@@ -7,7 +6,7 @@ import labels from "../utils/labels.json";
 const API_BASE = import.meta.env.VITE_API_BASE;
 const DETECT_URL = `${API_BASE}/detect`;
 
-// Fungsi warna kustom Anda (Tetap Dipertahankan)
+// Fungsi warna kustom 
 function classColorFromId(id) {
   const h = (Math.abs(id) * 137.508) % 360;
   return `hsl(${h}deg 90% 55%)`;
@@ -65,7 +64,7 @@ export default function ImageDetection() {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true", // Header Anti-Blokir Ngrok
+          "ngrok-skip-browser-warning": "true", 
         },
         body: JSON.stringify({ image: dataUrl }),
       });
@@ -198,7 +197,6 @@ export default function ImageDetection() {
       </div>
 
       {/* --- AREA HASIL (CANVAS RESPONSIVE) --- */}
-      {/* Gunakan w-full h-auto agar canvas menyesuaikan lebar HP */}
       <div className={`relative w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl border border-gray-700 bg-black transition-all duration-500 ${imageLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 hidden'}`}>
         
         <canvas

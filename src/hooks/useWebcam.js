@@ -51,7 +51,7 @@ export function useWebcam() {
     setCameraOn(false);
   }, []);
 
-  // --- 2. START CAMERA (Versi HD 16:9 + Cek Flash) ---
+  // --- 2. START CAMERA ---
   const startWebcam = useCallback(async () => {
     // Bersihkan stream sebelumnya jika ada
     if (streamRef.current) {
@@ -61,7 +61,7 @@ export function useWebcam() {
     setSwitching(true);
 
     try {
-      // KONFIGURASI HD 16:9
+      // KONFIGURASI 16:9
       const constraints = {
         audio: false,
         video: {
@@ -145,7 +145,7 @@ export function useWebcam() {
     setFacing((prev) => (prev === "user" ? "environment" : "user"));
   }, []);
 
-  // --- 4. TOGGLE FLASH (Fitur Baru) ---
+  // --- 4. TOGGLE FLASH ---
   const toggleFlash = useCallback(async () => {
     if (streamRef.current) {
       const track = streamRef.current.getVideoTracks()[0];

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, X, Zap, ZapOff, Video, RefreshCw, StopCircle, Scan } from "lucide-react"; 
-
 import labels from "../utils/labels.json";
 import { useWebcam } from "../hooks/useWebcam";
 import { useDetection } from "../hooks/useDetection";
@@ -16,7 +15,7 @@ export default function WebcamDetection() {
   } = useWebcam();
 
   // 1. MediaPipe Logic (Tanpa Visual, hanya ambil statusnya)
-  const { handPresence } = useHandPose(videoRef, cameraOn);
+  const { handPresence, landmarks } = useHandPose(videoRef, cameraOn);
 
   const tracksRef = useRef([]);
   const nextTrackId = useRef(1);
@@ -32,7 +31,6 @@ export default function WebcamDetection() {
     if ('wakeLock' in navigator) {
       try {
         wakeLockRef.current = await navigator.wakeLock.request('screen');
-        // console.log('Layar dikunci agar tetap menyala');
       } catch (err) {
         console.warn("Gagal mengaktifkan Wake Lock:", err);
       }
@@ -44,7 +42,6 @@ export default function WebcamDetection() {
       try {
         await wakeLockRef.current.release();
         wakeLockRef.current = null;
-        // console.log('Wake Lock dilepas');
       } catch (err) {
         console.warn("Gagal melepas Wake Lock:", err);
       }
@@ -79,11 +76,17 @@ export default function WebcamDetection() {
   };
 
   // Pass 'handPresence' agar API hanya dipanggil saat ada tangan
-  const { fps: serverFps } = useDetection(videoRef, cameraOn, handleDetections, handPresence);
+  const { fps: serverFps } = useDetection(
+  videoRef,
+  cameraOn,
+  handleDetections,
+  handPresence,
+  landmarks
+  );
 
   const isMirrored = facing === "user";
 
-  // 2. Loop Gambar (Visual Bersih: Hanya Kotak YOLO)
+  // 2. Loop Gambar (Hanya Kotak YOLO)
   useEffect(() => {
     let rafId;
     const loop = () => {
