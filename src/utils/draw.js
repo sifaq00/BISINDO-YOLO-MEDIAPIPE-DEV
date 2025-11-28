@@ -3,7 +3,7 @@ import { classColorFromId, LERP_SPEED_PER_SEC, TRACK_TTL_MS } from "./math";
 const MAX_CANVAS_DPR = 1.5;
 const FONT_SCALE = 4.0;
 
-// --- FUNGSI BARU: GAMBAR SKELETON MEDIAPIPE ---
+// --- GAMBAR SKELETON MEDIAPIPE ---
 export function drawSkeleton(ctx, landmarks, video, isMirrored, isMobile) {
   if (!landmarks || landmarks.length === 0 || !video || !ctx) return;
 
@@ -86,7 +86,7 @@ export function drawOverlay(ctx, canvas, video, tracksRef, labels, isMirrored = 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   
   // PENTING: Hanya clear jika diminta. 
-  // Di WebcamDetection, kita biarkan ini true (default) karena ini dipanggil pertama kali.
+  // Di WebcamDetection, biarkan ini true (default) karena ini dipanggil pertama kali.
   if (shouldClear) {
     ctx.clearRect(0, 0, wCss, hCss);
   }
