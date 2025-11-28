@@ -2,7 +2,13 @@ import { useState } from "react";
 import WebcamDetection from "./components/WebcamDetection";
 import ImageDetection from "./components/ImageDetection";
 import logoBisindo from "./assets/logo-bisindo.png";
-import { Video, Image as ImageIcon, ArrowLeft } from "lucide-react";
+import { Video, 
+  Image as ImageIcon, 
+  ArrowLeft,
+  Github,
+  Linkedin,
+  Instagram,
+ } from "lucide-react";
 
 function App() {
   const [detectionMode, setDetectionMode] = useState(null);
@@ -138,6 +144,37 @@ function App() {
         {/* FOOTER */}
         <footer className="mt-12 text-center text-gray-600 text-xs sm:text-sm">
           <p>&copy; 2025 BISINDO Detection System. Muhammad Asifaq.</p>
+          <div className="mt-3 flex items-center justify-center gap-4">
+            <a
+              href="https://github.com/sifaq00"
+              target="_blank"
+              rel="noreferrer"
+              className="text-gray-500 hover:text-white transition-colors"
+              aria-label="GitHub"
+            >
+              <Github size={18} />
+            </a>
+
+            <a
+              href="https://www.linkedin.com/in/muhammad-asifaq/"
+              target="_blank"
+              rel="noreferrer"
+              className="text-gray-500 hover:text-white transition-colors"
+              aria-label="LinkedIn"
+            >
+              <Linkedin size={18} />
+            </a>
+
+            <a
+              href="https://www.instagram.com/m.asfq_"
+              target="_blank"
+              rel="noreferrer"
+              className="text-gray-500 hover:text-white transition-colors"
+              aria-label="Instagram"
+            >
+              <Instagram size={18} />
+            </a>
+          </div>
         </footer>
 
       </div>
