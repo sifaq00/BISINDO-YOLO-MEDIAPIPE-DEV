@@ -15,8 +15,8 @@ const JPEG_QUALITY_LOCAL = 0.6;
 const JPEG_QUALITY_REMOTE = 0.4;
 
 // Interval minimal antar frame (ms)
-const MIN_INTERVAL_LOCAL = 0;   // lokal: gaspol
-const MIN_INTERVAL_REMOTE = 100;  // remote: untuk tes responsif di HP
+const MIN_INTERVAL_LOCAL = 0; // lokal: gaspol
+const MIN_INTERVAL_REMOTE = 100; // remote: untuk tes responsif di HP
 
 const MIN_INTERVAL_MS = IS_LOCAL ? MIN_INTERVAL_LOCAL : MIN_INTERVAL_REMOTE;
 
@@ -25,7 +25,7 @@ export function useDetection(
   cameraOn,
   onDetections,
   handPresence,
-  landmarks   
+  landmarks
 ) {
   const [fps, setFps] = useState(0);
 
@@ -40,6 +40,10 @@ export function useDetection(
   // Info ROI terakhir yang dipakai saat mengirim frame ke server
   // { roiX, roiY, scale }
   const roiRef = useRef(null);
+
+  // Flag untuk manajemen alert & jenis close
+  const wsErrorShownRef = useRef(false);   // supaya alert tidak spam
+  const manualCloseRef = useRef(false);    // menandai close yang sengaja (matikan kamera / pindah halaman)
 
   // === 1. Snapshot frame → DataURL (crop pakai landmarks) ===
   const captureImage = () => {
@@ -58,66 +62,65 @@ export function useDetection(
     let roiW = videoWidth;
     let roiH = videoHeight;
 
-    // Kalau ada landmarks dari MediaPipe → hitung bounding box tangan pertama
+    // Kalau ada landmarks dari MediaPipe → hitung bounding box tangan
     if (landmarks && landmarks.length > 0) {
-  // Gabungkan semua titik dari semua tangan (single-hand & two-hand)
-  let minX = 1;
-  let minY = 1;
-  let maxX = 0;
-  let maxY = 0;
+      // Gabungkan semua titik dari semua tangan (single-hand & two-hand)
+      let minX = 1;
+      let minY = 1;
+      let maxX = 0;
+      let maxY = 0;
 
-  for (const hand of landmarks) {
-    for (const p of hand) {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
+      for (const hand of landmarks) {
+        for (const p of hand) {
+          if (p.x < minX) minX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y > maxY) maxY = p.y;
+        }
+      }
+
+      // Normalized (0–1) → pixel video
+      roiX = minX * videoWidth;
+      roiY = minY * videoHeight;
+      roiW = (maxX - minX) * videoWidth;
+      roiH = (maxY - minY) * videoHeight;
+
+      // Tambah margin biar tangan + sedikit lengan dan konteks nggak kepotong
+      const maxSide = Math.max(roiW, roiH);
+
+      // Kalau dua tangan, kasih margin sedikit lebih besar
+      const marginScale = landmarks.length > 1 ? 0.8 : 1.0; // 2 tangan: 0.8, 1 tangan: 1.0
+      const margin = marginScale * maxSide;
+
+      roiX -= margin;
+      roiY -= margin;
+      roiW += 2 * margin;
+      roiH += 2 * margin;
+
+      // Clamp ke dalam frame video
+      if (roiX < 0) {
+        roiW += roiX;
+        roiX = 0;
+      }
+      if (roiY < 0) {
+        roiH += roiY;
+        roiY = 0;
+      }
+      if (roiX + roiW > videoWidth) {
+        roiW = videoWidth - roiX;
+      }
+      if (roiY + roiH > videoHeight) {
+        roiH = videoHeight - roiY;
+      }
+
+      // Kalau ROI terlalu kecil/aneh, fallback ke full-frame
+      if (roiW < 10 || roiH < 10) {
+        roiX = 0;
+        roiY = 0;
+        roiW = videoWidth;
+        roiH = videoHeight;
+      }
     }
-  }
-
-  // Normalized (0–1) → pixel video
-  roiX = minX * videoWidth;
-  roiY = minY * videoHeight;
-  roiW = (maxX - minX) * videoWidth;
-  roiH = (maxY - minY) * videoHeight;
-
-  // Tambah margin biar tangan + sedikit lengan dan konteks nggak kepotong
-  const maxSide = Math.max(roiW, roiH);
-
-  // Kalau dua tangan, kasih margin sedikit lebih besar
-  const marginScale = landmarks.length > 1 ? 0.8 : 1.0; // 2 tangan: 0.8, 1 tangan: 1.0
-  const margin = marginScale * maxSide;
-
-  roiX -= margin;
-  roiY -= margin;
-  roiW += 2 * margin;
-  roiH += 2 * margin;
-
-  // Clamp ke dalam frame video
-  if (roiX < 0) {
-    roiW += roiX;
-    roiX = 0;
-  }
-  if (roiY < 0) {
-    roiH += roiY;
-    roiY = 0;
-  }
-  if (roiX + roiW > videoWidth) {
-    roiW = videoWidth - roiX;
-  }
-  if (roiY + roiH > videoHeight) {
-    roiH = videoHeight - roiY;
-  }
-
-  // Kalau ROI terlalu kecil/aneh, fallback ke full-frame
-  if (roiW < 10 || roiH < 10) {
-    roiX = 0;
-    roiY = 0;
-    roiW = videoWidth;
-    roiH = videoHeight;
-  }
-}
-
 
     // Scale uniform: targetWidth = roiW * scale
     const scale = targetWidth / roiW;
@@ -131,17 +134,7 @@ export function useDetection(
     cvs.height = targetHeight;
 
     const ctx = cvs.getContext("2d");
-    ctx.drawImage(
-      v,
-      roiX,
-      roiY,
-      roiW,
-      roiH,
-      0,
-      0,
-      targetWidth,
-      targetHeight
-    );
+    ctx.drawImage(v, roiX, roiY, roiW, roiH, 0, 0, targetWidth, targetHeight);
 
     return cvs.toDataURL("image/jpeg", quality);
   };
@@ -157,6 +150,9 @@ export function useDetection(
 
       ws.onopen = () => {
         console.log("✅ [WS] connected", { IS_LOCAL, API_BASE });
+        // koneksi sukses → reset flag error
+        wsErrorShownRef.current = false;
+        manualCloseRef.current = false;
       };
 
       ws.onmessage = (event) => {
@@ -213,18 +209,45 @@ export function useDetection(
       ws.onerror = (err) => {
         console.error("❌ [WS] error:", err);
         sendingRef.current = false;
+
+        // Error WS (bukan close manual) → tampilkan alert sekali
+        if (!wsErrorShownRef.current && !manualCloseRef.current) {
+          alert(
+            "Gagal terhubung ke server deteksi (WebSocket). Pastikan backend FastAPI sedang berjalan dan alamat API benar."
+          );
+          wsErrorShownRef.current = true;
+        }
       };
 
       ws.onclose = () => {
         console.log("❌ [WS] disconnected");
         wsRef.current = null;
         sendingRef.current = false;
+
+        // Kalau close-nya BUKAN karena kita sendiri (manualCloseRef = false)
+        // baru tampilkan alert sekali
+        if (!manualCloseRef.current && !wsErrorShownRef.current) {
+          alert(
+            "Koneksi ke server deteksi terputus. Pastikan backend FastAPI sedang berjalan dan koneksi jaringan stabil."
+          );
+          wsErrorShownRef.current = true;
+        }
+
+        // Setelah onclose, anggap close sudah diproses
+        manualCloseRef.current = false;
       };
 
       wsRef.current = ws;
     } catch (e) {
       console.error("Failed to open WebSocket:", e);
       sendingRef.current = false;
+
+      if (!wsErrorShownRef.current) {
+        alert(
+          "Gagal membuka koneksi WebSocket. Periksa kembali backend dan konfigurasi VITE_API_BASE."
+        );
+        wsErrorShownRef.current = true;
+      }
     }
   };
 
@@ -261,7 +284,9 @@ export function useDetection(
     if (cameraOn) {
       connectWebSocket();
     } else {
+      // Kamera dimatikan → ini close normal (jangan alert)
       if (wsRef.current) {
+        manualCloseRef.current = true;
         wsRef.current.close();
         wsRef.current = null;
       }
@@ -271,7 +296,9 @@ export function useDetection(
     }
 
     return () => {
+      // Cleanup saat unmount / pindah halaman → juga close normal
       if (wsRef.current) {
+        manualCloseRef.current = true;
         wsRef.current.close();
         wsRef.current = null;
       }
