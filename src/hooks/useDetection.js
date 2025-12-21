@@ -16,7 +16,7 @@ const JPEG_QUALITY_REMOTE = 0.4;
 
 // Interval minimal antar frame (ms)
 const MIN_INTERVAL_LOCAL = 0; // lokal: gaspol
-const MIN_INTERVAL_REMOTE = 300; // remote: untuk tes responsif di HP
+const MIN_INTERVAL_REMOTE = 200; // remote: untuk tes responsif di HP
 
 const MIN_INTERVAL_MS = IS_LOCAL ? MIN_INTERVAL_LOCAL : MIN_INTERVAL_REMOTE;
 
