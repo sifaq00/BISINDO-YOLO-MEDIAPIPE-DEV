@@ -7,7 +7,7 @@ const WS_URL = API_BASE.replace("http", "ws") + "/ws/detect";
 const IS_LOCAL =
   API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1");
 
-// Sesuaikan dengan setting yang lagi kamu pakai sekarang
+// Konfigurasi berbeda untuk lokal vs remote
 const TARGET_WIDTH_LOCAL = 480;
 const TARGET_WIDTH_REMOTE = 320;
 

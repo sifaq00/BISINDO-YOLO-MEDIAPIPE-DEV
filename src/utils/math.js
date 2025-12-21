@@ -12,7 +12,7 @@ export const LERP_SPEED_PER_SEC = 10;
 
 // Batas minimal akurasi (BARU)
 // Deteksi di bawah 75% dianggap sampah/noise dan dibuang
-const MIN_SCORE = 0.75; 
+const MIN_SCORE = 0.80; 
 
 // --- HELPER FUNCTIONS ---
 
@@ -104,6 +104,6 @@ export function matchDetectionsToTracks(currentTracks, newDetections, nextIdRef)
   }
 
   // 4. Hapus track yang sudah kadaluwarsa (TTL)
-  //    Track yang tidak di-update selama 200ms akan dihapus
+  //    Track yang tidak di-update selama 300ms akan dihapus
   return tracks.filter(tr => (now - tr.lastSeen) <= TRACK_TTL_MS);
 }
