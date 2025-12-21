@@ -4,7 +4,7 @@
 export const MATCH_IOU = 0.3;        
 
 // Agar deteksi "hantu" cepat hilang saat tangan bergerak cepat
-export const TRACK_TTL_MS = 800;     
+export const TRACK_TTL_MS = 500;     
 
 // Kecepatan animasi kotak mengejar tangan 
 // Agar pergerakan terlihat lebih halus (cinematic) dan tidak gemetar
