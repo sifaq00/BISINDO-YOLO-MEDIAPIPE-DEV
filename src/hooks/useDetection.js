@@ -1,22 +1,21 @@
 import { useRef, useState, useEffect } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
-const WS_URL = API_BASE.replace("http", "ws") + "/ws/detect";
+// Pastikan URL Websocket terbentuk dengan benar (http -> ws, https -> wss)
+const WS_URL = API_BASE.replace(/^http/, "ws") + "/ws/detect";
 
-// Deteksi apakah backend lokal atau remote (Cloudflare / internet)
+// Deteksi apakah backend lokal atau remote
 const IS_LOCAL =
   API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1");
 
-// Konfigurasi berbeda untuk lokal vs remote
 const TARGET_WIDTH_LOCAL = 480;
-const TARGET_WIDTH_REMOTE = 320;
+const TARGET_WIDTH_REMOTE = 320; // Resolusi kecil agar enteng di jaringan
 
 const JPEG_QUALITY_LOCAL = 0.6;
-const JPEG_QUALITY_REMOTE = 0.4;
+const JPEG_QUALITY_REMOTE = 0.4; // Kualitas rendah agar paket data kecil
 
-// Interval minimal antar frame (ms)
-const MIN_INTERVAL_LOCAL = 0; // lokal: gaspol
-const MIN_INTERVAL_REMOTE = 200; // remote: untuk tes responsif di HP
+const MIN_INTERVAL_LOCAL = 0;
+const MIN_INTERVAL_REMOTE = 200; // Batas 5 FPS agar backend CPU tidak meledak
 
 const MIN_INTERVAL_MS = IS_LOCAL ? MIN_INTERVAL_LOCAL : MIN_INTERVAL_REMOTE;
 
@@ -37,18 +36,23 @@ export function useDetection(
   const fpsLastT = useRef(performance.now());
   const animationFrameRef = useRef(null);
 
-  // Info ROI terakhir yang dipakai saat mengirim frame ke server
-  // { roiX, roiY, scale }
+  // Simpan landmarks di ref agar tidak memicu re-render effect loop
+  const landmarksRef = useRef(landmarks);
+  useEffect(() => {
+    landmarksRef.current = landmarks;
+  }, [landmarks]);
+
   const roiRef = useRef(null);
+  const wsErrorShownRef = useRef(false);
+  const manualCloseRef = useRef(false);
 
-  // Flag untuk manajemen alert & jenis close
-  const wsErrorShownRef = useRef(false);   // supaya alert tidak spam
-  const manualCloseRef = useRef(false);    // menandai close yang sengaja (matikan kamera / pindah halaman)
-
-  // === 1. Snapshot frame → DataURL (crop pakai landmarks) ===
+  // === 1. Snapshot frame ===
   const captureImage = () => {
     const v = videoRef.current;
     if (!v || !v.videoWidth) return null;
+
+    // Gunakan landmarks dari Ref yang paling update
+    const currentLandmarks = landmarksRef.current;
 
     const targetWidth = IS_LOCAL ? TARGET_WIDTH_LOCAL : TARGET_WIDTH_REMOTE;
     const quality = IS_LOCAL ? JPEG_QUALITY_LOCAL : JPEG_QUALITY_REMOTE;
@@ -56,21 +60,15 @@ export function useDetection(
     const videoWidth = v.videoWidth;
     const videoHeight = v.videoHeight;
 
-    // Default: full-frame
     let roiX = 0;
     let roiY = 0;
     let roiW = videoWidth;
     let roiH = videoHeight;
 
-    // Kalau ada landmarks dari MediaPipe → hitung bounding box tangan
-    if (landmarks && landmarks.length > 0) {
-      // Gabungkan semua titik dari semua tangan (single-hand & two-hand)
-      let minX = 1;
-      let minY = 1;
-      let maxX = 0;
-      let maxY = 0;
+    if (currentLandmarks && currentLandmarks.length > 0) {
+      let minX = 1, minY = 1, maxX = 0, maxY = 0;
 
-      for (const hand of landmarks) {
+      for (const hand of currentLandmarks) {
         for (const p of hand) {
           if (p.x < minX) minX = p.x;
           if (p.y < minY) minY = p.y;
@@ -79,17 +77,13 @@ export function useDetection(
         }
       }
 
-      // Normalized (0–1) → pixel video
       roiX = minX * videoWidth;
       roiY = minY * videoHeight;
       roiW = (maxX - minX) * videoWidth;
       roiH = (maxY - minY) * videoHeight;
 
-      // Tambah margin biar tangan + sedikit lengan dan konteks nggak kepotong
       const maxSide = Math.max(roiW, roiH);
-
-      // Kalau dua tangan, kasih margin sedikit lebih besar
-      const marginScale = landmarks.length > 1 ? 0.8 : 1.0; // 2 tangan: 0.8, 1 tangan: 1.0
+      const marginScale = currentLandmarks.length > 1 ? 0.8 : 1.0;
       const margin = marginScale * maxSide;
 
       roiX -= margin;
@@ -97,36 +91,19 @@ export function useDetection(
       roiW += 2 * margin;
       roiH += 2 * margin;
 
-      // Clamp ke dalam frame video
-      if (roiX < 0) {
-        roiW += roiX;
-        roiX = 0;
-      }
-      if (roiY < 0) {
-        roiH += roiY;
-        roiY = 0;
-      }
-      if (roiX + roiW > videoWidth) {
-        roiW = videoWidth - roiX;
-      }
-      if (roiY + roiH > videoHeight) {
-        roiH = videoHeight - roiY;
-      }
+      if (roiX < 0) { roiW += roiX; roiX = 0; }
+      if (roiY < 0) { roiH += roiY; roiY = 0; }
+      if (roiX + roiW > videoWidth) roiW = videoWidth - roiX;
+      if (roiY + roiH > videoHeight) roiH = videoHeight - roiY;
 
-      // Kalau ROI terlalu kecil/aneh, fallback ke full-frame
       if (roiW < 10 || roiH < 10) {
-        roiX = 0;
-        roiY = 0;
-        roiW = videoWidth;
-        roiH = videoHeight;
+        roiX = 0; roiY = 0; roiW = videoWidth; roiH = videoHeight;
       }
     }
 
-    // Scale uniform: targetWidth = roiW * scale
     const scale = targetWidth / roiW;
     const targetHeight = roiH * scale;
 
-    // Simpan info ROI + scale buat mapping balik bbox
     roiRef.current = { roiX, roiY, scale };
 
     const cvs = document.createElement("canvas");
@@ -139,9 +116,10 @@ export function useDetection(
     return cvs.toDataURL("image/jpeg", quality);
   };
 
-  // === 2. Setup / connect WebSocket ===
+  // === 2. Setup WebSocket ===
   const connectWebSocket = () => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    // FIX: Cek juga state CONNECTING (0) agar tidak spam bikin koneksi baru
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
@@ -150,7 +128,6 @@ export function useDetection(
 
       ws.onopen = () => {
         console.log("✅ [WS] connected", { IS_LOCAL, API_BASE });
-        // koneksi sukses → reset flag error
         wsErrorShownRef.current = false;
         manualCloseRef.current = false;
       };
@@ -158,37 +135,25 @@ export function useDetection(
       ws.onmessage = (event) => {
         try {
           const raw = JSON.parse(event.data);
-
           if (Array.isArray(raw)) {
             const now = performance.now();
             const roi = roiRef.current;
 
             const scaledDetections = raw.map((d) => {
-              // Kalau sempat nyimpan ROI & scale, mapping balik ke koordinat video
               if (roi && roi.scale) {
-                const { roiX, roiY, scale } = roi;
-
-                const x1 = roiX + d.x1 / scale;
-                const y1 = roiY + d.y1 / scale;
-                const x2 = roiX + d.x2 / scale;
-                const y2 = roiY + d.y2 / scale;
-
                 return {
                   ...d,
-                  x1,
-                  y1,
-                  x2,
-                  y2,
+                  x1: roi.roiX + d.x1 / roi.scale,
+                  y1: roi.roiY + d.y1 / roi.scale,
+                  x2: roi.roiX + d.x2 / roi.scale,
+                  y2: roi.roiY + d.y2 / roi.scale,
                 };
               }
-
-              // Fallback: kalau entah kenapa ROI nggak ada, pakai apa adanya
               return d;
             });
 
             if (onDetections) onDetections(scaledDetections);
 
-            // FPS server (frame yang bener-bener diproses)
             fpsCount.current++;
             if (now - fpsLastT.current >= 1000) {
               setFps(fpsCount.current);
@@ -201,20 +166,16 @@ export function useDetection(
         } catch (e) {
           console.error("[WS] parse error:", e);
         } finally {
-          // Apapun yang terjadi, frame sebelumnya resmi selesai
-          sendingRef.current = false;
+          sendingRef.current = false; // Reset flag agar bisa kirim lagi
         }
       };
 
       ws.onerror = (err) => {
         console.error("❌ [WS] error:", err);
         sendingRef.current = false;
-
-        // Error WS (bukan close manual) → tampilkan alert sekali
         if (!wsErrorShownRef.current && !manualCloseRef.current) {
-          alert(
-            "Gagal terhubung ke server deteksi (WebSocket). Pastikan backend FastAPI sedang berjalan dan alamat API benar."
-          );
+          // Jangan alert jika errornya karena buffer penuh (insufficient resources)
+          // alert("Gagal terhubung ke server..."); // Optional: disable alert biar gak ganggu
           wsErrorShownRef.current = true;
         }
       };
@@ -223,17 +184,11 @@ export function useDetection(
         console.log("❌ [WS] disconnected");
         wsRef.current = null;
         sendingRef.current = false;
-
-        // Kalau close-nya BUKAN karena kita sendiri (manualCloseRef = false)
-        // baru tampilkan alert sekali
+        
         if (!manualCloseRef.current && !wsErrorShownRef.current) {
-          alert(
-            "Koneksi ke server deteksi terputus. Pastikan backend FastAPI sedang berjalan dan koneksi jaringan stabil."
-          );
-          wsErrorShownRef.current = true;
+           // Silent retry is better for production
+           // wsErrorShownRef.current = true; 
         }
-
-        // Setelah onclose, anggap close sudah diproses
         manualCloseRef.current = false;
       };
 
@@ -241,27 +196,24 @@ export function useDetection(
     } catch (e) {
       console.error("Failed to open WebSocket:", e);
       sendingRef.current = false;
-
-      if (!wsErrorShownRef.current) {
-        alert(
-          "Gagal membuka koneksi WebSocket. Periksa kembali backend dan konfigurasi VITE_API_BASE."
-        );
-        wsErrorShownRef.current = true;
-      }
     }
   };
 
-  // === 3. Kirim 1 frame → tunggu respons ===
+  // === 3. Kirim Frame ===
   const sendDetectWS = () => {
-    const now = performance.now();
-
-    // GATEKEEPER: sama seperti REST
+    // Stop jika user mematikan kamera atau tidak ada tangan (hemat bandwidth)
     if (!cameraOn || !handPresence) return;
+    
+    // Stop jika sedang menunggu balasan dari backend (Stop-and-Wait)
     if (sendingRef.current) return;
+
+    const now = performance.now();
+    // Stop jika terlalu cepat (Throttling)
     if (now - lastSendTime.current < MIN_INTERVAL_MS) return;
 
+    // Cek koneksi
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      connectWebSocket();
+      connectWebSocket(); // Coba reconnect
       return;
     }
 
@@ -269,7 +221,7 @@ export function useDetection(
     if (!dataUrl) return;
 
     lastSendTime.current = now;
-    sendingRef.current = true;
+    sendingRef.current = true; // Kunci sampai ada balasan
 
     try {
       wsRef.current.send(JSON.stringify({ image: dataUrl }));
@@ -279,12 +231,11 @@ export function useDetection(
     }
   };
 
-  // === 4. Manajemen connect / disconnect saat kamera ON/OFF ===
+  // === 4. Manajemen Koneksi ===
   useEffect(() => {
     if (cameraOn) {
       connectWebSocket();
     } else {
-      // Kamera dimatikan → ini close normal (jangan alert)
       if (wsRef.current) {
         manualCloseRef.current = true;
         wsRef.current.close();
@@ -296,18 +247,15 @@ export function useDetection(
     }
 
     return () => {
-      // Cleanup saat unmount / pindah halaman → juga close normal
       if (wsRef.current) {
         manualCloseRef.current = true;
         wsRef.current.close();
         wsRef.current = null;
       }
-      sendingRef.current = false;
-      roiRef.current = null;
     };
   }, [cameraOn]);
 
-  // === 5. Loop requestAnimationFrame: kirim frame kalau kamera ON ===
+  // === 5. Loop Utama (Fixed) ===
   useEffect(() => {
     const loop = () => {
       if (cameraOn) {
@@ -319,18 +267,16 @@ export function useDetection(
     if (cameraOn) {
       loop();
     } else {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       setFps(0);
     }
 
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [cameraOn, handPresence, landmarks]);
+    // HAPUS landmarks & handPresence dari dependency array!
+    // Kita pakai landmarksRef dan handPresence diproses di dalam captureImage/sendDetectWS
+  }, [cameraOn, handPresence]); // handPresence masih oke disini untuk start/stop logic, tapi landmarks jangan.
 
   return { fps };
 }
